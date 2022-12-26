@@ -562,7 +562,7 @@ class File : public Group
         const bool exists          = std::filesystem::is_regular_file(file);
         const htri_t is_accessible = exists ? H5Fis_hdf5(file.c_str()) : 0;
 
-        if (mode == "r")
+        if (mode == "r") // Readonly, file must exist (default)
         {
             if (not exists or is_accessible <= 0)
             {
@@ -571,7 +571,7 @@ class File : public Group
             }
             m_file_id = H5Fopen(file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
         }
-        if (mode == "r+")
+        else if (mode == "r+") // Read/write, file must exist
         {
             if (not exists or is_accessible <= 0)
             {
@@ -580,7 +580,7 @@ class File : public Group
             }
             m_file_id = H5Fopen(file.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
         }
-        if (mode == "w")
+        else if (mode == "w") // Create file, truncate if exists
         {
             m_file_id = H5Fcreate(file.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT,
                                   H5P_DEFAULT);
@@ -588,7 +588,7 @@ class File : public Group
                 m_file_id, "Failed to create/overwrite HDF5 file with name '"s +
                                file + "'."s);
         }
-        if (mode == "w-" or mode == "x")
+        else if (mode == "w-" or mode == "x") // Create file, fail if exists
         {
             if (exists)
             {
@@ -597,7 +597,7 @@ class File : public Group
             m_file_id = H5Fcreate(file.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT,
                                   H5P_DEFAULT);
         }
-        if (mode == "a")
+        if (mode == "a") // Read/write if exists, create otherwise
         {
             if (exists and is_accessible > 0)
             {

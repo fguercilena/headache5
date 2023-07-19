@@ -10,7 +10,7 @@ ifeq ($(origin .RECIPEPREFIX), undefined)
 endif
 .RECIPEPREFIX = >
 
-CXX=clang++
+CXX=g++
 CXX_FLAGS=-g -Og -Wall -Wextra -Wpedantic -std=c++17 -march=native
 LD_FLAGS=-lhdf5
 

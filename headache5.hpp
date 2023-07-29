@@ -19,7 +19,7 @@ namespace H5
 {
 
 template <typename E>
-void h5_throw(const char* format, ...)
+inline void h5_throw(const char* format, ...)
 {
     char msg[5000];
 
@@ -32,7 +32,7 @@ void h5_throw(const char* format, ...)
 }
 
 template <typename E, typename F>
-void h5_check_and_throw(F flag, const char* format, ...)
+inline void h5_check_and_throw(F flag, const char* format, ...)
 {
     if (flag < 0)
     {
@@ -44,6 +44,22 @@ void h5_check_and_throw(F flag, const char* format, ...)
         va_end(args);
 
         throw E(msg);
+    }
+}
+
+template <typename F>
+inline void h5_check_and_exit(F flag, const char* format, ...)
+{
+    if (flag < 0)
+    {
+        va_list args;
+        va_start(args, format);
+        std::vfprintf(stderr, format, args);
+        va_end(args);
+
+        fflush(nullptr);
+
+        std::exit(1);
     }
 }
 
@@ -87,7 +103,7 @@ class IOError : public std::runtime_error
 
 
 template <typename T>
-constexpr hid_t select_HDF5_type()
+inline constexpr hid_t select_HDF5_type()
 {
     using namespace std;
 
@@ -136,7 +152,13 @@ class DataSpace
     {
         if (H5Iis_valid(m_dataspace_id) > 0)
         {
-            H5Sclose(m_dataspace_id);
+#ifdef HEADACHE5_DEBUG
+            printf("Closing HDF5 dataspace with id '%ld'.\n", m_dataspace_id);
+            fflush(nullptr);
+#endif
+            h5_check_and_exit(H5Sclose(m_dataspace_id),
+                              "Failed to close HDF5 dataspace with id '%ld'.",
+                              m_dataspace_id);
         }
     }
 
@@ -285,7 +307,7 @@ class DataSet : public Attributable
     hid_t m_dataset_id;
     dimensions_t m_dimensions;
     dimensions_t m_chunks;
-    std::string m_name;
+    std::string m_dataset_name;
     hid_t m_type;
     bool m_extendable;
 
@@ -294,14 +316,22 @@ class DataSet : public Attributable
     {
         if (H5Iis_valid(m_dataset_id) > 0)
         {
-            H5Dflush(m_dataset_id);
-            H5Dclose(m_dataset_id);
+#ifdef HEADACHE5_DEBUG
+            printf("Closing HDF5 dataset '%s'.\n", m_dataset_name.c_str());
+            fflush(nullptr);
+#endif
+            h5_check_and_exit(H5Dflush(m_dataset_id),
+                              "Failed to flush HDF5 dataset '%s'.",
+                              m_dataset_name.c_str());
+            h5_check_and_exit(H5Dclose(m_dataset_id),
+                              "Failed to close HDF5 dataset '%s'.",
+                              m_dataset_name.c_str());
         }
     }
 
     DataSet(const hid_t group_id, const std::string& name,
             const DataSpace& space, dimensions_t chunks = {})
-        : m_dimensions(space.dimensions()), m_name(name)
+        : m_dimensions(space.dimensions()), m_dataset_name(name)
     {
         const hsize_t rank = space.rank();
         bool m_extendable  = space.extendable();
@@ -360,7 +390,7 @@ class DataSet : public Attributable
         m_attributable_id = m_dataset_id;
     }
 
-    DataSet(hid_t group_id, const std::string& name) : m_name(name)
+    DataSet(hid_t group_id, const std::string& name) : m_dataset_name(name)
     {
         // HDF5 compatibility
         m_dataset_id = H5Dopen(group_id, name.c_str());
@@ -387,9 +417,25 @@ class DataSet : public Attributable
         m_attributable_id = m_dataset_id;
     }
 
+    DataSet& operator=(DataSet&& other)
+    {
+        m_dataset_id   = std::move(other.m_dataset_id);
+        m_dataset_name = std::move(other.m_dataset_name);
+        m_dimensions   = std::move(other.m_dimensions);
+        m_chunks       = std::move(other.m_chunks);
+        m_extendable   = std::move(other.m_extendable);
+        m_type         = std::move(other.m_type);
+
+        m_attributable_id = std::move(other.m_attributable_id);
+
+        other.m_dataset_id = -1;
+
+        return *this;
+    }
+
     std::string name() const
     {
-        return m_name;
+        return m_dataset_name;
     }
 
     hsize_t rank() const
@@ -417,13 +463,13 @@ class DataSet : public Attributable
     {
         if (not m_extendable)
         {
-            h5_throw<DataSetError>("Data set '%s' cannot be resized.",
-                                   m_name.c_str());
+            h5_throw<DataSetError>("Dataset '%s' cannot be resized.",
+                                   m_dataset_name.c_str());
         }
 
         h5_check_and_throw<DataSetError>(H5Dextend(m_dataset_id, sizes.data()),
                                          "Could not resize data set '%s'.",
-                                         m_name.c_str());
+                                         m_dataset_name.c_str());
 
         m_dimensions = sizes;
     }
@@ -445,7 +491,7 @@ class DataSet : public Attributable
             H5Dwrite(m_dataset_id, m_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
         h5_check_and_throw<IOError>(
             status, "Failed to write to HDF5 dataset with name '%s'.",
-            m_name.c_str());
+            m_dataset_name.c_str());
     }
 
     template <typename DT>
@@ -484,7 +530,7 @@ class DataSet : public Attributable
                                 H5P_DEFAULT, buffer);
         h5_check_and_throw<IOError>(
             status, "Failed to read HDF5 dataset with name '%s'.",
-            m_name.c_str());
+            m_dataset_name.c_str());
 
         return std::unique_ptr<DT[]>(static_cast<DT*>(buffer));
     }
@@ -520,7 +566,7 @@ class DataSet : public Attributable
                                 H5P_DEFAULT, buffer);
         h5_check_and_throw<IOError>(
             status, "Failed to read HDF5 dataset with name '%s'.",
-            m_name.c_str());
+            m_dataset_name.c_str());
 
         return std::unique_ptr<DT[]>(static_cast<DT*>(buffer));
     }
@@ -530,26 +576,47 @@ class Group : public Attributable
 {
   protected:
     hid_t m_group_id;
-    std::string m_name;
+    std::string m_group_name;
 
   public:
     ~Group()
     {
         if (H5Iis_valid(m_group_id) > 0)
         {
-            H5Gclose(m_group_id);
+#ifdef HEADACHE5_DEBUG
+            printf("Closing HDF5 group '%s'.\n", m_group_name.c_str());
+            fflush(nullptr);
+#endif
+            h5_check_and_exit(H5Gflush(m_group_id),
+                              "Failed to flush HDF5 group '%s'.",
+                              m_group_name.c_str());
+            h5_check_and_exit(H5Gclose(m_group_id),
+                              "Failed to close HDF5 group '%s'.",
+                              m_group_name.c_str());
         }
     }
 
     Group(const hid_t group_id, const std::string& name)
-        : m_group_id(group_id), m_name(name)
+        : m_group_id(group_id), m_group_name(name)
     {
         m_attributable_id = group_id;
     }
 
+    Group& operator=(Group&& other)
+    {
+        m_group_id   = std::move(other.m_group_id);
+        m_group_name = std::move(other.m_group_name);
+
+        m_attributable_id = std::move(other.m_attributable_id);
+
+        other.m_group_id = -1;
+
+        return *this;
+    }
+
     std::string name() const
     {
-        return m_name;
+        return m_group_name;
     }
 
     hid_t id() const
@@ -619,20 +686,36 @@ class File : public Group
 {
   protected:
     hid_t m_file_id;
-    std::string m_name;
+    std::string m_file_name;
 
   public:
     ~File()
     {
         if (H5Iis_valid(m_file_id) > 0)
         {
-            H5Fflush(m_file_id, H5F_SCOPE_LOCAL);
-            H5Fclose(m_file_id);
+#ifdef HEADACHE5_DEBUG
+            printf("Closing HDF5 file '%s'.\n", m_file_name.c_str());
+            fflush(nullptr);
+#endif
+            h5_check_and_exit(H5Gflush(m_group_id),
+                              "Failed to flush HDF5 base group for file '%s'.",
+                              m_file_name.c_str());
+            h5_check_and_exit(H5Gclose(m_group_id),
+                              "Failed to close HDF5 base group for file '%s'.",
+                              m_file_name.c_str());
+
+            h5_check_and_exit(H5Fflush(m_file_id, H5F_SCOPE_LOCAL),
+                              "Failed to flush HDF5 file '%s'.",
+                              m_file_name.c_str());
+            h5_check_and_exit(H5Fclose(m_file_id),
+                              "Failed to close HDF5 file '%s'.",
+                              m_file_name.c_str());
         }
     }
 
     File()
-        : Group(-1, "/"), m_file_id(-1), m_name("INVALID - DEFAULT CONSTRUCTED")
+        : Group(-1, "/"), m_file_id(-1),
+          m_file_name("INVALID - DEFAULT CONSTRUCTED")
     {
     }
 
@@ -644,13 +727,14 @@ class File : public Group
         m_group_id = H5Gopen(m_file_id, "/");
         h5_check_and_throw<GroupError>(
             m_group_id, "Failed to open base group of file '%s'.",
-            m_name.c_str());
+            m_file_name.c_str());
+        m_group_name = "/";
 
         ssize_t namesize = H5Fget_name(m_file_id, nullptr, 0);
         char* name       = new char[namesize + 1];
         H5Fget_name(m_file_id, name, namesize + 1);
-        m_name.clear();
-        m_name.insert(0, name);
+        m_file_name.clear();
+        m_file_name.insert(0, name);
         delete[] name;
     }
 
@@ -730,30 +814,31 @@ class File : public Group
         m_group_id = H5Gopen(m_file_id, "/");
         h5_check_and_throw<GroupError>(
             m_group_id, "Failed to open base group of file '%s'.",
-            m_name.c_str());
+            m_file_name.c_str());
+        m_group_name = "/";
 
-        m_name = file;
+        m_file_name = file;
     }
 
-    File& operator=(const File& other)
+    File& operator=(File&& other)
     {
-        m_file_id = other.m_file_id;
-        m_name    = other.m_name;
+        m_file_id   = std::move(other.m_file_id);
+        m_file_name = std::move(other.m_file_name);
 
-        m_attributable_id = m_file_id;
+        // m_group_id   = std::move(other.m_group_id);
+        // m_group_name = std::move(other.m_group_name);
+        Group::operator=(std::move(other));
 
-        // HDF5 compatibility
-        m_group_id = H5Gopen(m_file_id, "/");
-        h5_check_and_throw<GroupError>(
-            m_group_id, "Failed to open base group of file '%s'.",
-            m_name.c_str());
+        m_attributable_id = std::move(other.m_attributable_id);
+
+        other.m_file_id = -1;
 
         return *this;
     }
 
     std::string name() const
     {
-        return m_name;
+        return m_file_name;
     }
 
     hid_t id() const

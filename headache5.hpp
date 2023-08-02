@@ -524,6 +524,14 @@ class DataSet : public Attributable
         hid_t mspace_id    = H5Screate_simple(rank(), block.data(), nullptr);
         const hsize_t size = std::accumulate(block.begin(), block.end(), 1,
                                              std::multiplies<hsize_t>());
+
+#ifdef HEADACHE5_DEBUG
+        printf("Creating buffer to read dataset.\nThe number of elements in "
+               "the buffer will be: %lu\nThe size of the datatype is %lu\n",
+               size, H5Tget_size(m_type));
+        fflush(nullptr);
+#endif
+        assert(size * H5Tget_size(m_type) > 0);
         void* buffer = static_cast<void*>(new char[size * H5Tget_size(m_type)]);
 
         herr_t status = H5Dread(m_dataset_id, m_type, mspace_id, fspace_id,

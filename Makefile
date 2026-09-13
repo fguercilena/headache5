@@ -11,7 +11,7 @@ endif
 .RECIPEPREFIX = >
 
 CXX=g++
-CXX_FLAGS=-g -Og -Wall -Wextra -Wpedantic -std=c++17 -march=native
+CXX_FLAGS=-g -Og -Wall -Wextra -Wpedantic -std=c++23 -march=native
 LD_FLAGS=-lhdf5
 
 NAME=test

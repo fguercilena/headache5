@@ -1,10 +1,9 @@
-#ifndef HEADACHE5_HPP
-#define HEADACHE5_HPP
+#pragma once
 
-#include <cstdarg>
-#include <cstdio>
 #include <filesystem>
+#include <format>
 #include <numeric>
+#include <print>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -18,47 +17,32 @@
 namespace H5
 {
 
-template <typename E>
-inline void h5_throw(const char* format, ...)
+template <class E, class... Args>
+inline void h5_throw(std::format_string<Args...> fmt, Args&&... args)
 {
-    char msg[5000];
-
-    va_list args;
-    va_start(args, format);
-    std::vsprintf(msg, format, args);
-    va_end(args);
+    std::string msg = std::vformat(fmt.get(), std::make_format_args(args...));
 
     throw E(msg);
 }
 
-template <typename E, typename F>
-inline void h5_check_and_throw(F flag, const char* format, ...)
+template <class E, class F, class... Args>
+inline void h5_check_and_throw(F flag, std::format_string<Args...> fmt,
+                               Args&&... args)
 {
     if (flag < 0)
     {
-        char msg[5000];
-
-        va_list args;
-        va_start(args, format);
-        std::vsprintf(msg, format, args);
-        va_end(args);
-
-        throw E(msg);
+        h5_throw<E>(fmt, args...);
     }
 }
 
-template <typename F>
-inline void h5_check_and_exit(F flag, const char* format, ...)
+template <class F, class... Args>
+inline void h5_check_and_exit(F flag, std::format_string<Args...> fmt,
+                              Args&&... args)
 {
     if (flag < 0)
     {
-        va_list args;
-        va_start(args, format);
-        std::vfprintf(stderr, format, args);
-        va_end(args);
-
-        fflush(nullptr);
-
+        std::println(stderr, fmt, args...);
+        std::fflush(stderr);
         std::exit(1);
     }
 }
@@ -133,7 +117,7 @@ inline constexpr hid_t select_HDF5_type()
     }
     else
     {
-        h5_throw<TypeError>("Type with typeid.name=%s is not supported.",
+        h5_throw<TypeError>("Type with typeid.name={:s} is not supported.",
                             typeid(T).name());
     }
 
@@ -153,11 +137,12 @@ class DataSpace
         if (H5Iis_valid(m_dataspace_id) > 0)
         {
 #ifdef HEADACHE5_DEBUG
-            printf("Closing HDF5 dataspace with id '%ld'.\n", m_dataspace_id);
-            fflush(nullptr);
+            std::println("Closing HDF5 dataspace with id '{:d}'.\n",
+                         m_dataspace_id);
+            std::fflush(stdout);
 #endif
             h5_check_and_exit(H5Sclose(m_dataspace_id),
-                              "Failed to close HDF5 dataspace with id '%ld'.",
+                              "Failed to close HDF5 dataspace with id '{:d}'.",
                               m_dataspace_id);
         }
     }
@@ -183,8 +168,7 @@ class DataSpace
           m_dimensions(d), m_extendable(extendable)
     {
         h5_check_and_throw<DataSpaceError>(
-            H5Iis_valid(m_dataspace_id), "Failed to construct HDF5 dataspace.",
-            nullptr);
+            H5Iis_valid(m_dataspace_id), "Failed to construct HDF5 dataspace.");
     }
 
     DataSpace(const hid_t id) : m_dataspace_id(id)
@@ -230,7 +214,7 @@ class Attributable
     {
         const htri_t status = H5Aexists(m_attributable_id, name.c_str());
         h5_check_and_throw<IOError>(
-            status, "Problem reading attribute with name '%s'.", name.c_str());
+            status, "Problem reading attribute with name '{:s}'.", name);
         return (status > 0);
     }
 
@@ -240,8 +224,8 @@ class Attributable
     {
         if (attribute_exists(name))
         {
-            h5_throw<IOError>("Attribute with name '%s' already exists.",
-                              name.c_str());
+            h5_throw<IOError>("Attribute with name '{:s}' already exists.",
+                              name);
         }
 
         DataSpace space(dimensions);
@@ -252,16 +236,16 @@ class Attributable
         const hid_t attribute_id = H5Acreate(m_attributable_id, name.c_str(),
                                              type, space.id(), H5P_DEFAULT);
         h5_check_and_throw<AttributeError>(
-            attribute_id, "Failed to create HDF5 attribute with name '%s'.",
-            name.c_str());
+            attribute_id, "Failed to create HDF5 attribute with name '{:s}'.",
+            name);
 
         h5_check_and_throw<IOError>(
             H5Awrite(attribute_id, type, data),
-            "Failed to write to HDF5 attribute with name '%s'.", name.c_str());
+            "Failed to write to HDF5 attribute with name '{:s}'.", name);
 
         h5_check_and_throw<AttributeError>(
             H5Aclose(attribute_id),
-            "Failed to close HDF5 attribute with name '%s'.", name.c_str());
+            "Failed to close HDF5 attribute with name '{:s}'.", name);
     }
 
     template <typename T>
@@ -271,14 +255,14 @@ class Attributable
         if (not attribute_exists(name))
         {
             h5_throw<AttributeError>(
-                "Attribute with name '%s' does not exists.", name.c_str());
+                "Attribute with name '{:s}' does not exists.", name);
         }
 
         const hid_t attribute_id =
             H5Aopen(m_attributable_id, name.c_str(), H5P_DEFAULT);
         h5_check_and_throw<AttributeError>(
-            attribute_id, "Failed to open HDF5 attribute with name '%s'.",
-            name.c_str());
+            attribute_id, "Failed to open HDF5 attribute with name '{:s}'.",
+            name);
 
         DataSpace space(H5Aget_space(attribute_id));
 
@@ -289,11 +273,11 @@ class Attributable
 
         h5_check_and_throw<IOError>(
             H5Aread(attribute_id, type, buffer),
-            "Failed to read HDF5 attribute with name '%s'.", name.c_str());
+            "Failed to read HDF5 attribute with name '{:s}'.", name);
 
         h5_check_and_throw<AttributeError>(
             H5Aclose(attribute_id),
-            "Failed to close HDF5 attribute with name '%s'.", name.c_str());
+            "Failed to close HDF5 attribute with name '{:s}'.", name);
 
         return {std::unique_ptr<T[]>(static_cast<T*>(buffer)),
                 space.dimensions()};
@@ -317,15 +301,15 @@ class DataSet : public Attributable
         if (H5Iis_valid(m_dataset_id) > 0)
         {
 #ifdef HEADACHE5_DEBUG
-            printf("Closing HDF5 dataset '%s'.\n", m_dataset_name.c_str());
-            fflush(nullptr);
+            std::println("Closing HDF5 dataset '{:s}'.", m_dataset_name);
+            std::fflush(stdout);
 #endif
             h5_check_and_exit(H5Dflush(m_dataset_id),
-                              "Failed to flush HDF5 dataset '%s'.",
-                              m_dataset_name.c_str());
+                              "Failed to flush HDF5 dataset '{:s}'.",
+                              m_dataset_name);
             h5_check_and_exit(H5Dclose(m_dataset_id),
-                              "Failed to close HDF5 dataset '%s'.",
-                              m_dataset_name.c_str());
+                              "Failed to close HDF5 dataset '{:s}'.",
+                              m_dataset_name);
         }
     }
 
@@ -358,9 +342,10 @@ class DataSet : public Attributable
         }
         else if (chunks.size() != space.rank())
         {
-            h5_throw<DataSetError>(
-                "Invalid chunk size (%d), different from dataspace size (%d).",
-                chunks.size(), space.rank());
+            h5_throw<DataSetError>("Invalid chunk size ({:d}), different from "
+                                   "dataspace size ({:d}).",
+                                   //    chunks.size(), space.rank());
+                                   0, 0);
         }
 
         m_type = select_HDF5_type<T>();
@@ -373,7 +358,7 @@ class DataSet : public Attributable
             status        = H5Pset_deflate(plist_id, 9);
 
             h5_check_and_throw<DataSetError>(
-                status, "Couldn't set chunk size and/or compression.", nullptr);
+                status, "Couldn't set chunk size and/or compression.");
         }
         else
         {
@@ -384,8 +369,8 @@ class DataSet : public Attributable
         m_dataset_id =
             H5Dcreate(group_id, name.c_str(), m_type, space.id(), plist_id);
         h5_check_and_throw<DataSetError>(
-            m_dataset_id, "Failed to create HDF5 dataset with name '%s'.",
-            name.c_str());
+            m_dataset_id, "Failed to create HDF5 dataset with name '{:s}'.",
+            name);
 
         m_attributable_id = m_dataset_id;
     }
@@ -395,18 +380,17 @@ class DataSet : public Attributable
         // HDF5 compatibility
         m_dataset_id = H5Dopen(group_id, name.c_str());
         h5_check_and_throw<DataSetError>(
-            m_dataset_id, "Failed to open HDF5 dataset with name '%s'.",
-            name.c_str());
+            m_dataset_id, "Failed to open HDF5 dataset with name '{:s}'.",
+            name);
 
         m_type = select_HDF5_type<T>();
 
         if (H5Tequal(m_type, H5Dget_type(m_dataset_id)) < 0)
         {
-            h5_throw<TypeError>("Cannot open H5::DataSet '%s': "
-                                "H5::DataSet type (code: %ld) and "
-                                "HDF5 dataset type (code: %ld) differ.",
-                                name.c_str(), m_type,
-                                H5Dget_type(m_dataset_id));
+            h5_throw<TypeError>("Cannot open H5::DataSet '{:s}': "
+                                "H5::DataSet type (code: {:d}) and "
+                                "HDF5 dataset type (code: {:d}) differ.",
+                                name, m_type, H5Dget_type(m_dataset_id));
         }
 
         DataSpace space(H5Dget_space(m_dataset_id));
@@ -463,13 +447,13 @@ class DataSet : public Attributable
     {
         if (not m_extendable)
         {
-            h5_throw<DataSetError>("Dataset '%s' cannot be resized.",
-                                   m_dataset_name.c_str());
+            h5_throw<DataSetError>("Dataset '{:s}' cannot be resized.",
+                                   m_dataset_name);
         }
 
         h5_check_and_throw<DataSetError>(H5Dextend(m_dataset_id, sizes.data()),
-                                         "Could not resize data set '%s'.",
-                                         m_dataset_name.c_str());
+                                         "Could not resize data set '{:s}'.",
+                                         m_dataset_name);
 
         m_dimensions = sizes;
     }
@@ -482,16 +466,16 @@ class DataSet : public Attributable
         if (H5Tequal(type, m_type) < 0)
         {
             h5_throw<TypeError>(
-                "Tried to write data pointer with data type (code: %ld) "
-                "different from dataset type (code: %ld).",
+                "Tried to write data pointer with data type (code: {:d}) "
+                "different from dataset type (code: {:d}).",
                 type, m_type);
         }
 
         const herr_t status =
             H5Dwrite(m_dataset_id, m_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, data);
         h5_check_and_throw<IOError>(
-            status, "Failed to write to HDF5 dataset with name '%s'.",
-            m_dataset_name.c_str());
+            status, "Failed to write to HDF5 dataset with name '{:s}'.",
+            m_dataset_name);
     }
 
     template <typename DT>
@@ -502,16 +486,15 @@ class DataSet : public Attributable
         if (offset.size() != rank() or stride.size() != rank() or
             count.size() != rank() or block.size() != rank())
         {
-            h5_throw<DataSetError>("Wrong size for hyperslab parameters.",
-                                   nullptr);
+            h5_throw<DataSetError>("Wrong size for hyperslab parameters.");
         }
 
         const hid_t type = select_HDF5_type<DT>();
         if (H5Tequal(type, m_type) < 0)
         {
             h5_throw<TypeError>(
-                "Tried to read data with data type (code: %ld) different "
-                "from dataset type (code: %ld).",
+                "Tried to read data with data type (code: {:d}) different "
+                "from dataset type (code: {:d}).",
                 type, m_type);
         }
 
@@ -526,19 +509,20 @@ class DataSet : public Attributable
                                              std::multiplies<hsize_t>());
 
 #ifdef HEADACHE5_DEBUG
-        printf("Creating buffer to read dataset.\nThe number of elements in "
-               "the buffer will be: %lu\nThe size of the datatype is %lu\n",
-               size, H5Tget_size(m_type));
-        fflush(nullptr);
+        std::println(
+            "Creating buffer to read dataset.\nThe number of elements in "
+            "the buffer will be: {:d}\nThe size of the datatype is {:d}\n",
+            size, H5Tget_size(m_type));
+        std::fflush(stdout);
 #endif
-        assert(size * H5Tget_size(m_type) > 0);
+
         void* buffer = static_cast<void*>(new char[size * H5Tget_size(m_type)]);
 
         herr_t status = H5Dread(m_dataset_id, m_type, mspace_id, fspace_id,
                                 H5P_DEFAULT, buffer);
         h5_check_and_throw<IOError>(
-            status, "Failed to read HDF5 dataset with name '%s'.",
-            m_dataset_name.c_str());
+            status, "Failed to read HDF5 dataset with name '{:s}'.",
+            m_dataset_name);
 
         return std::unique_ptr<DT[]>(static_cast<DT*>(buffer));
     }
@@ -562,8 +546,8 @@ class DataSet : public Attributable
         if (H5Tequal(type, m_type) < 0)
         {
             h5_throw<TypeError>(
-                "Tried to read data with data type (code: %ld) different "
-                "from dataset type (code: %ld).",
+                "Tried to read data with data type (code: {:d}) different "
+                "from dataset type (code: {:d}).",
                 type, m_type);
         }
 
@@ -573,8 +557,8 @@ class DataSet : public Attributable
         herr_t status = H5Dread(m_dataset_id, m_type, H5S_ALL, H5S_ALL,
                                 H5P_DEFAULT, buffer);
         h5_check_and_throw<IOError>(
-            status, "Failed to read HDF5 dataset with name '%s'.",
-            m_dataset_name.c_str());
+            status, "Failed to read HDF5 dataset with name '{:s}'.",
+            m_dataset_name);
 
         return std::unique_ptr<DT[]>(static_cast<DT*>(buffer));
     }
@@ -592,15 +576,15 @@ class Group : public Attributable
         if (H5Iis_valid(m_group_id) > 0)
         {
 #ifdef HEADACHE5_DEBUG
-            printf("Closing HDF5 group '%s'.\n", m_group_name.c_str());
-            fflush(nullptr);
+            std::println("Closing HDF5 group '{:s}'.\n", m_group_name);
+            std::fflush(stdout);
 #endif
             h5_check_and_exit(H5Gflush(m_group_id),
-                              "Failed to flush HDF5 group '%s'.",
-                              m_group_name.c_str());
+                              "Failed to flush HDF5 group '{:s}'.",
+                              m_group_name);
             h5_check_and_exit(H5Gclose(m_group_id),
-                              "Failed to close HDF5 group '%s'.",
-                              m_group_name.c_str());
+                              "Failed to close HDF5 group '{:s}'.",
+                              m_group_name);
         }
     }
 
@@ -647,8 +631,8 @@ class Group : public Attributable
             new_group_id = H5Gcreate(m_group_id, name.c_str(), 0);
         }
         h5_check_and_throw<GroupError>(
-            new_group_id, "Failed to create/open HDF5 group with '%s'.",
-            name.c_str());
+            new_group_id, "Failed to create/open HDF5 group with '{:s}'.",
+            name);
 
         return Group(new_group_id, name);
     }
@@ -657,8 +641,7 @@ class Group : public Attributable
     {
         htri_t status = H5Lexists(m_group_id, name.c_str(), H5P_DEFAULT);
         h5_check_and_throw<GroupError>(
-            status, "Problem reading group/dataset with name '%s'.",
-            name.c_str());
+            status, "Problem reading group/dataset with name '{:s}'.", name);
 
         return status > 0;
     }
@@ -702,22 +685,22 @@ class File : public Group
         if (H5Iis_valid(m_file_id) > 0)
         {
 #ifdef HEADACHE5_DEBUG
-            printf("Closing HDF5 file '%s'.\n", m_file_name.c_str());
-            fflush(nullptr);
+            std::println("Closing HDF5 file '{:s}'.\n", m_file_name);
+            std::fflush(stdout);
 #endif
-            h5_check_and_exit(H5Gflush(m_group_id),
-                              "Failed to flush HDF5 base group for file '%s'.",
-                              m_file_name.c_str());
-            h5_check_and_exit(H5Gclose(m_group_id),
-                              "Failed to close HDF5 base group for file '%s'.",
-                              m_file_name.c_str());
+            h5_check_and_exit(
+                H5Gflush(m_group_id),
+                "Failed to flush HDF5 base group for file '{:s}'.",
+                m_file_name);
+            h5_check_and_exit(
+                H5Gclose(m_group_id),
+                "Failed to close HDF5 base group for file '{:s}'.",
+                m_file_name);
 
             h5_check_and_exit(H5Fflush(m_file_id, H5F_SCOPE_LOCAL),
-                              "Failed to flush HDF5 file '%s'.",
-                              m_file_name.c_str());
+                              "Failed to flush HDF5 file '{:s}'.", m_file_name);
             h5_check_and_exit(H5Fclose(m_file_id),
-                              "Failed to close HDF5 file '%s'.",
-                              m_file_name.c_str());
+                              "Failed to close HDF5 file '{:s}'.", m_file_name);
         }
     }
 
@@ -734,8 +717,8 @@ class File : public Group
         // HDF5 compatibility
         m_group_id = H5Gopen(m_file_id, "/");
         h5_check_and_throw<GroupError>(
-            m_group_id, "Failed to open base group of file '%s'.",
-            m_file_name.c_str());
+            m_group_id, "Failed to open base group of file '{:s}'.",
+            m_file_name);
         m_group_name = "/";
 
         ssize_t namesize = H5Fget_name(m_file_id, nullptr, 0);
@@ -756,12 +739,11 @@ class File : public Group
         {
             if (not exists)
             {
-                h5_throw<FileError>("File '%s' does not exists.", file.c_str());
+                h5_throw<FileError>("File '{:s}' does not exists.", file);
             }
             if (is_accessible <= 0)
             {
-                h5_throw<FileError>("File '%s' is not accessible.",
-                                    file.c_str());
+                h5_throw<FileError>("File '{:s}' is not accessible.", file);
             }
             m_file_id = H5Fopen(file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
         }
@@ -769,12 +751,11 @@ class File : public Group
         {
             if (not exists)
             {
-                h5_throw<FileError>("File '%s' does not exists.", file.c_str());
+                h5_throw<FileError>("File '{:s}' does not exists.", file);
             }
             if (is_accessible <= 0)
             {
-                h5_throw<FileError>("File '%s' is not accessible.",
-                                    file.c_str());
+                h5_throw<FileError>("File '{:s}' is not accessible.", file);
             }
             m_file_id = H5Fopen(file.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
         }
@@ -785,15 +766,15 @@ class File : public Group
             if (m_file_id <= 0)
             {
                 h5_throw<FileError>(
-                    "Failed to create/overwrite HDF5 file with name '%s'.",
-                    file.c_str());
+                    "Failed to create/overwrite HDF5 file with name '{:s}'.",
+                    file);
             }
         }
         else if (mode == "w-" or mode == "x") // Create file, fail if exists
         {
             if (exists)
             {
-                h5_throw<FileError>("File '%s' already exists.", file.c_str());
+                h5_throw<FileError>("File '{:s}' already exists.", file);
             }
             m_file_id = H5Fcreate(file.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT,
                                   H5P_DEFAULT);
@@ -811,8 +792,8 @@ class File : public Group
             }
             else if (exists and is_accessible < 0)
             {
-                h5_throw<FileError>("File '%s' exists, but cannot be accessed.",
-                                    file.c_str());
+                h5_throw<FileError>(
+                    "File '{:s}' exists, but cannot be accessed.", file);
             }
         }
 
@@ -821,8 +802,8 @@ class File : public Group
         // HDF5 compatibility
         m_group_id = H5Gopen(m_file_id, "/");
         h5_check_and_throw<GroupError>(
-            m_group_id, "Failed to open base group of file '%s'.",
-            m_file_name.c_str());
+            m_group_id, "Failed to open base group of file '{:s}'.",
+            m_file_name);
         m_group_name = "/";
 
         m_file_name = file;
@@ -856,4 +837,3 @@ class File : public Group
 };
 
 } // namespace H5
-#endif

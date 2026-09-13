@@ -5,7 +5,7 @@ C++23. It exposes some of the most commonly used HDF5 API features in a
 structured, object-oriented way.
 
 ## HEADACHE5 is:
-- a simple C++ wrapper for the most commonly used HDF5 entities (File, Graoup,
+- a simple C++ wrapper for the most commonly used HDF5 entities (File, Group,
   DataSet, DataSpace, Attribute, common DataTypes), with clean API
 - a simple C++ wrapper for the most common operations on those entities
   (create/open/close Files, Groups, Datasets, read/write data and attrbutes),

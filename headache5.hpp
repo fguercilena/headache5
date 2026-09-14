@@ -344,8 +344,7 @@ class DataSet : public Attributable
         {
             h5_throw<DataSetError>("Invalid chunk size ({:d}), different from "
                                    "dataspace size ({:d}).",
-                                   //    chunks.size(), space.rank());
-                                   0, 0);
+                                      chunks.size(), space.rank());
         }
 
         m_type = select_HDF5_type<T>();

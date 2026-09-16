@@ -50,36 +50,43 @@ inline void h5_check_and_exit(F flag, std::format_string<Args...> fmt,
 typedef std::vector<hsize_t> dimensions_t;
 
 // Exceptions
+/// @brief Exception raised for file-related HDF5 failures.
 class FileError : public std::runtime_error
 {
     using std::runtime_error::runtime_error;
 };
 
+/// @brief Exception raised for group-related HDF5 failures.
 class GroupError : public std::runtime_error
 {
     using std::runtime_error::runtime_error;
 };
 
+/// @brief Exception raised for dataset-related HDF5 failures.
 class DataSetError : public std::runtime_error
 {
     using std::runtime_error::runtime_error;
 };
 
+/// @brief Exception raised for dataspace-related HDF5 failures.
 class DataSpaceError : public std::runtime_error
 {
     using std::runtime_error::runtime_error;
 };
 
+/// @brief Exception raised for attribute-related HDF5 failures.
 class AttributeError : public std::runtime_error
 {
     using std::runtime_error::runtime_error;
 };
 
+/// @brief Exception raised when an unsupported type is requested.
 class TypeError : public std::runtime_error
 {
     using std::runtime_error::runtime_error;
 };
 
+/// @brief Exception raised for low-level I/O errors during HDF5 access.
 class IOError : public std::runtime_error
 {
     using std::runtime_error::runtime_error;
@@ -124,6 +131,10 @@ inline constexpr hid_t select_HDF5_type()
     return type;
 }
 
+/// @brief Represents an HDF5 dataspace and its dimensional metadata.
+///
+/// A dataspace describes the shape of an HDF5 dataset or attribute and can
+/// optionally be marked as extendable.
 class DataSpace
 {
   private:
@@ -132,6 +143,7 @@ class DataSpace
     bool m_extendable;
 
   public:
+    /// @brief Closes the underlying HDF5 dataspace if it is still valid.
     ~DataSpace()
     {
         if (H5Iis_valid(m_dataspace_id) > 0)
@@ -147,6 +159,7 @@ class DataSpace
         }
     }
 
+    /// @brief Constructs an invalid empty dataspace.
     DataSpace()
         : m_dataspace_id(H5I_INVALID_HID), m_dimensions({
                                                0,
@@ -155,6 +168,9 @@ class DataSpace
     {
     }
 
+    /// @brief Constructs a dataspace with the given dimensionality.
+    /// @param d The dimensions of the dataspace.
+    /// @param extendable Whether the dataspace may be resized later.
     DataSpace(const dimensions_t& d, const bool extendable = false)
         : m_dataspace_id(
               std::accumulate(d.begin(), d.end(), 1,
@@ -171,45 +187,64 @@ class DataSpace
             H5Iis_valid(m_dataspace_id), "Failed to construct HDF5 dataspace.");
     }
 
+    /// @brief Wraps an existing HDF5 dataspace identifier.
+    /// @param id The native HDF5 dataspace handle.
     DataSpace(const hid_t id) : m_dataspace_id(id)
     {
         m_dimensions.resize(H5Sget_simple_extent_ndims(m_dataspace_id));
         H5Sget_simple_extent_dims(m_dataspace_id, m_dimensions.data(), nullptr);
     }
 
+    /// @brief Returns the underlying HDF5 dataspace identifier.
+    /// @return The native HDF5 handle for the dataspace.
     hid_t id() const
     {
         return m_dataspace_id;
     }
 
+    /// @brief Returns the number of dimensions in the dataspace.
+    /// @return The dataspace rank.
     hsize_t rank() const
     {
         return m_dimensions.size();
     }
 
+    /// @brief Returns the dimensional shape of the dataspace.
+    /// @return A vector containing the extent of each dimension.
     dimensions_t dimensions() const
     {
         return m_dimensions;
     }
 
+    /// @brief Returns the total number of elements represented by the dataspace.
+    /// @return The product of all dimension lengths.
     hsize_t size() const
     {
         return std::accumulate(m_dimensions.begin(), m_dimensions.end(), 1,
                                std::multiplies<hsize_t>());
     }
 
+    /// @brief Reports whether the dataspace can be resized.
+    /// @return `true` if the dataspace is extendable, otherwise `false`.
     bool extendable() const
     {
         return m_extendable;
     }
 };
 
+/// @brief Common base class for HDF5 objects that support attributes.
+///
+/// This class provides attribute read/write helpers for datasets and groups.
 class Attributable
 {
   protected:
     hid_t m_attributable_id;
 
   public:
+    /// @brief Checks whether an attribute with the specified name exists.
+    /// @param name The attribute name.
+    /// @return `true` if the attribute exists, otherwise `false`.
+    /// @throws IOError If the HDF5 lookup fails.
     bool attribute_exists(const std::string& name) const
     {
         const htri_t status = H5Aexists(m_attributable_id, name.c_str());
@@ -218,6 +253,13 @@ class Attributable
         return (status > 0);
     }
 
+    /// @brief Writes a raw array to a new HDF5 attribute.
+    /// @tparam T The element type stored in the attribute.
+    /// @param name The attribute name.
+    /// @param data Pointer to the data buffer.
+    /// @param dimensions The shape of the attribute data.
+    /// @throws AttributeError If the attribute cannot be created or closed.
+    /// @throws IOError If the write operation fails.
     template <typename T>
     void write_attribute(const std::string& name, const T* data,
                          const dimensions_t& dimensions) const
@@ -248,6 +290,12 @@ class Attributable
             "Failed to close HDF5 attribute with name '{:s}'.", name);
     }
 
+    /// @brief Reads an attribute as a newly allocated array.
+    /// @tparam T The element type expected from the attribute.
+    /// @param name The attribute name.
+    /// @return A pair containing the array buffer and the attribute dimensions.
+    /// @throws AttributeError If the attribute is missing or cannot be opened.
+    /// @throws IOError If the read operation fails.
     template <typename T>
     std::pair<std::unique_ptr<T[]>, dimensions_t>
     read_attribute(const std::string& name) const
@@ -284,6 +332,10 @@ class Attributable
     }
 };
 
+/// @brief Represents an HDF5 dataset associated with a native HDF5 type.
+///
+/// The dataset stores typed values and supports metadata, resizing, and
+/// hyperslab reads/writes.
 template <typename T>
 class DataSet : public Attributable
 {
@@ -296,6 +348,7 @@ class DataSet : public Attributable
     bool m_extendable;
 
   public:
+    /// @brief Closes the dataset and flushes pending data.
     ~DataSet()
     {
         if (H5Iis_valid(m_dataset_id) > 0)
@@ -313,6 +366,13 @@ class DataSet : public Attributable
         }
     }
 
+    /// @brief Creates a new dataset inside an HDF5 group.
+    /// @tparam T The dataset element type.
+    /// @param group_id The parent group handle.
+    /// @param name The dataset name.
+    /// @param space The dataspace describing dataset dimensions.
+    /// @param chunks Optional manual chunking layout.
+    /// @throws DataSetError If the dataset cannot be created.
     DataSet(const hid_t group_id, const std::string& name,
             const DataSpace& space, dimensions_t chunks = {})
         : m_dimensions(space.dimensions()), m_dataset_name(name)
@@ -374,6 +434,12 @@ class DataSet : public Attributable
         m_attributable_id = m_dataset_id;
     }
 
+    /// @brief Opens an existing dataset from a group.
+    /// @tparam T The expected element type.
+    /// @param group_id The parent group handle.
+    /// @param name The dataset name.
+    /// @throws DataSetError If the dataset cannot be opened.
+    /// @throws TypeError If the expected type does not match the stored HDF5 type.
     DataSet(hid_t group_id, const std::string& name) : m_dataset_name(name)
     {
         // HDF5 compatibility
@@ -400,6 +466,9 @@ class DataSet : public Attributable
         m_attributable_id = m_dataset_id;
     }
 
+    /// @brief Move-assignment operator.
+    /// @param other The dataset to move from.
+    /// @return Reference to this dataset.
     DataSet& operator=(DataSet&& other)
     {
         m_dataset_id   = std::move(other.m_dataset_id);
@@ -416,32 +485,45 @@ class DataSet : public Attributable
         return *this;
     }
 
+    /// @brief Returns the dataset name.
+    /// @return The dataset name as a string.
     std::string name() const
     {
         return m_dataset_name;
     }
 
+    /// @brief Returns the rank of the dataset.
+    /// @return The number of dimensions.
     hsize_t rank() const
     {
         return m_dimensions.size();
     }
 
+    /// @brief Returns the dataset dimensions.
+    /// @return A vector containing the extent along each axis.
     dimensions_t dimensions() const
     {
         return m_dimensions;
     }
 
+    /// @brief Returns the total number of elements in the dataset.
+    /// @return The product of all extents.
     hsize_t size() const
     {
         return std::accumulate(m_dimensions.begin(), m_dimensions.end(), 1,
                                std::multiplies<hsize_t>());
     }
 
+    /// @brief Reports whether the dataset can be resized.
+    /// @return `true` if the dataset is extendable, otherwise `false`.
     bool extendable() const
     {
         return m_extendable;
     }
 
+    /// @brief Resizes an extendable dataset.
+    /// @param sizes The new extents for each dimension.
+    /// @throws DataSetError If the dataset is not extendable or the resize fails.
     void resize(const dimensions_t sizes)
     {
         if (not m_extendable)
@@ -458,6 +540,11 @@ class DataSet : public Attributable
     }
 
     // TODO: write a hyperslab capable version of this function
+    /// @brief Writes a full dataset from a raw buffer.
+    /// @tparam DT The type of the provided data pointer.
+    /// @param data Pointer to the data to write.
+    /// @throws TypeError If the provided type does not match the dataset type.
+    /// @throws IOError If the dataset write fails.
     template <typename DT>
     void write_data(const DT* data) const
     {
@@ -478,6 +565,16 @@ class DataSet : public Attributable
             m_dataset_name);
     }
 
+    /// @brief Reads a hyperslab from the dataset using explicit offset/stride/count/block arguments.
+    /// @tparam DT The type to read into.
+    /// @param offset The offset of the hyperslab.
+    /// @param stride The stride of the selected region.
+    /// @param count The number of blocks to read in each dimension.
+    /// @param block The block size for each dimension.
+    /// @return A pointer to the read data buffer.
+    /// @throws DataSetError If the hyperslab parameters are invalid.
+    /// @throws TypeError If the requested type differs from the dataset type.
+    /// @throws IOError If the HDF5 read fails.
     template <typename DT>
     std::unique_ptr<DT[]>
     read_data(const dimensions_t& offset, const dimensions_t& stride,
@@ -527,6 +624,11 @@ class DataSet : public Attributable
         return std::unique_ptr<DT[]>(static_cast<DT*>(buffer));
     }
 
+    /// @brief Reads a dataset slice using an offset and block size.
+    /// @tparam DT The type to read into.
+    /// @param offset The starting offset of the block.
+    /// @param block The dimensions of the block to read.
+    /// @return A pointer to the read buffer.
     template <typename DT>
     std::unique_ptr<DT[]> read_data(const dimensions_t& offset,
                                     const dimensions_t& block) const
@@ -534,10 +636,14 @@ class DataSet : public Attributable
         const dimensions_t stride(m_dimensions.size(), 1);
         const dimensions_t count(m_dimensions.size(), 1);
 
-
         return read_data<DT>(offset, stride, count, block);
     }
 
+    /// @brief Reads the entire dataset into a newly allocated buffer.
+    /// @tparam DT The type to read into.
+    /// @return A pointer to the dataset contents.
+    /// @throws TypeError If the request type differs from the stored dataset type.
+    /// @throws IOError If the HDF5 read fails.
     template <typename DT>
     std::unique_ptr<DT[]> read_data() const
     {
@@ -564,6 +670,9 @@ class DataSet : public Attributable
     }
 };
 
+/// @brief Represents an HDF5 group and exposes group/dataset creation helpers.
+///
+/// Groups may contain subgroups, datasets, and attributes.
 class Group : public Attributable
 {
   protected:
@@ -571,6 +680,7 @@ class Group : public Attributable
     std::string m_group_name;
 
   public:
+    /// @brief Closes the underlying HDF5 group if it is still valid.
     ~Group()
     {
         if (H5Iis_valid(m_group_id) > 0)
@@ -588,12 +698,18 @@ class Group : public Attributable
         }
     }
 
+    /// @brief Wraps an existing HDF5 group handle.
+    /// @param group_id The native HDF5 group identifier.
+    /// @param name The group name.
     Group(const hid_t group_id, const std::string& name)
         : m_group_id(group_id), m_group_name(name)
     {
         m_attributable_id = group_id;
     }
 
+    /// @brief Move-assignment operator for groups.
+    /// @param other The group to move from.
+    /// @return Reference to this group.
     Group& operator=(Group&& other)
     {
         m_group_id   = std::move(other.m_group_id);
@@ -606,16 +722,24 @@ class Group : public Attributable
         return *this;
     }
 
+    /// @brief Returns the group name.
+    /// @return The group path or name.
     std::string name() const
     {
         return m_group_name;
     }
 
+    /// @brief Returns the native HDF5 group identifier.
+    /// @return The underlying HDF5 handle.
     hid_t id() const
     {
         return m_group_id;
     }
 
+    /// @brief Ensures a subgroup exists, creating it if necessary.
+    /// @param name The subgroup name.
+    /// @return A `Group` object for the target subgroup.
+    /// @throws GroupError If the group cannot be created or opened.
     Group require_group(const std::string& name) const
     {
         hid_t new_group_id;
@@ -637,6 +761,10 @@ class Group : public Attributable
         return Group(new_group_id, name);
     }
 
+    /// @brief Checks whether a group member or dataset with the given name exists.
+    /// @param name The link name to test.
+    /// @return `true` if the link exists, otherwise `false`.
+    /// @throws GroupError If inspecting the link fails.
     bool link_exists(const std::string& name) const
     {
         htri_t status = H5Lexists(m_group_id, name.c_str(), H5P_DEFAULT);
@@ -646,6 +774,12 @@ class Group : public Attributable
         return status > 0;
     }
 
+    /// @brief Creates a dataset inside the group.
+    /// @tparam T The dataset element type.
+    /// @param name The dataset name.
+    /// @param space The dataspace describing the dataset shape.
+    /// @param chunks Optional chunking selection.
+    /// @return The created dataset.
     template <typename T>
     DataSet<T> create_dataset(const std::string& name, const DataSpace& space,
                               dimensions_t chunks = {}) const
@@ -653,12 +787,20 @@ class Group : public Attributable
         return DataSet<T>(m_group_id, name, space, chunks);
     }
 
+    /// @brief Opens an existing dataset from the group.
+    /// @tparam T The expected dataset element type.
+    /// @param name The dataset name.
+    /// @return The opened dataset.
+    /// @throws DataSetError If the dataset cannot be opened.
     template <typename T>
     DataSet<T> open_dataset(const std::string& name) const
     {
         return DataSet<T>(m_group_id, name);
     }
 
+    /// @brief Recursively visits linked group members using an HDF5 callback.
+    /// @param callback The HDF5 iteration callback.
+    /// @param callback_data User-supplied state passed to the callback.
     void visit(H5L_iterate_t callback, void* callback_data)
     {
         // HDF5 compatibility
@@ -666,6 +808,9 @@ class Group : public Attributable
                  callback_data);
     }
 
+    /// @brief Iterates over linked group members using the provided callback.
+    /// @param callback The HDF5 iteration callback.
+    /// @param callback_data User-supplied state passed to the callback.
     void iterate(H5L_iterate_t callback, void* callback_data)
     {
         H5Literate(m_group_id, H5_INDEX_NAME, H5_ITER_INC, nullptr, callback,
@@ -673,6 +818,10 @@ class Group : public Attributable
     }
 };
 
+/// @brief Represents an HDF5 file and provides access to its root group.
+///
+/// This class behaves like a group wrapper around the file’s root group and
+/// manages file open/close semantics.
 class File : public Group
 {
   protected:
@@ -680,6 +829,7 @@ class File : public Group
     std::string m_file_name;
 
   public:
+    /// @brief Closes the file and its associated root group.
     ~File()
     {
         if (H5Iis_valid(m_file_id) > 0)
@@ -704,12 +854,15 @@ class File : public Group
         }
     }
 
+    /// @brief Constructs an invalid default file handle.
     File()
         : Group(-1, "/"), m_file_id(-1),
           m_file_name("INVALID - DEFAULT CONSTRUCTED")
     {
     }
 
+    /// @brief Wraps an existing HDF5 file identifier.
+    /// @param file_id The native HDF5 file handle.
     File(hid_t file_id) : Group(-1, "/"), m_file_id(file_id)
     {
         m_attributable_id = m_file_id;
@@ -729,6 +882,11 @@ class File : public Group
         delete[] name;
     }
 
+    /// @brief Opens or creates an HDF5 file with the requested mode.
+    /// @param file The file path.
+    /// @param mode The file access mode. Supported values are: "r", "r+",
+    ///             "w", "w-"/"x", and "a".
+    /// @throws FileError If the file is missing, inaccessible, or cannot be created/opened.
     File(const std::string& file, const std::string& mode = "r")
         : Group(-1, "/")
     {
@@ -809,6 +967,9 @@ class File : public Group
         m_file_name = file;
     }
 
+    /// @brief Move-assignment operator for files.
+    /// @param other The file to move from.
+    /// @return Reference to this file.
     File& operator=(File&& other)
     {
         m_file_id   = std::move(other.m_file_id);
@@ -825,11 +986,15 @@ class File : public Group
         return *this;
     }
 
+    /// @brief Returns the file path.
+    /// @return The file name or path as a string.
     std::string name() const
     {
         return m_file_name;
     }
 
+    /// @brief Returns the native HDF5 file identifier.
+    /// @return The underlying HDF5 handle for the file.
     hid_t id() const
     {
         return m_file_id;

@@ -233,8 +233,8 @@ class Attributable
         const hid_t type = select_HDF5_type<T>();
 
         // HDF5 compatibility
-        const hid_t attribute_id = H5Acreate(m_attributable_id, name.c_str(),
-                                             type, space.id(), H5P_DEFAULT);
+        const hid_t attribute_id = H5Acreate1(m_attributable_id, name.c_str(),
+                                              type, space.id(), H5P_DEFAULT);
         h5_check_and_throw<AttributeError>(
             attribute_id, "Failed to create HDF5 attribute with name '{:s}'.",
             name);
@@ -344,7 +344,7 @@ class DataSet : public Attributable
         {
             h5_throw<DataSetError>("Invalid chunk size ({:d}), different from "
                                    "dataspace size ({:d}).",
-                                      chunks.size(), space.rank());
+                                   chunks.size(), space.rank());
         }
 
         m_type = select_HDF5_type<T>();
@@ -366,7 +366,7 @@ class DataSet : public Attributable
 
         // HDF5 compatibility
         m_dataset_id =
-            H5Dcreate(group_id, name.c_str(), m_type, space.id(), plist_id);
+            H5Dcreate1(group_id, name.c_str(), m_type, space.id(), plist_id);
         h5_check_and_throw<DataSetError>(
             m_dataset_id, "Failed to create HDF5 dataset with name '{:s}'.",
             name);
@@ -377,7 +377,7 @@ class DataSet : public Attributable
     DataSet(hid_t group_id, const std::string& name) : m_dataset_name(name)
     {
         // HDF5 compatibility
-        m_dataset_id = H5Dopen(group_id, name.c_str());
+        m_dataset_id = H5Dopen1(group_id, name.c_str());
         h5_check_and_throw<DataSetError>(
             m_dataset_id, "Failed to open HDF5 dataset with name '{:s}'.",
             name);
@@ -457,6 +457,7 @@ class DataSet : public Attributable
         m_dimensions = sizes;
     }
 
+    // TODO: write a hyperslab capable version of this function
     template <typename DT>
     void write_data(const DT* data) const
     {
@@ -501,7 +502,7 @@ class DataSet : public Attributable
         h5_check_and_throw<DataSetError>(
             H5Sselect_hyperslab(fspace_id, H5S_SELECT_SET, offset.data(),
                                 stride.data(), count.data(), block.data()),
-            "Couldn't select HDF5 hyperslab.", nullptr);
+            "Couldn't select HDF5 hyperslab.");
 
         hid_t mspace_id    = H5Screate_simple(rank(), block.data(), nullptr);
         const hsize_t size = std::accumulate(block.begin(), block.end(), 1,
@@ -622,12 +623,12 @@ class Group : public Attributable
         if (link_exists(name))
         {
             // HDF5 compatibility
-            new_group_id = H5Gopen(m_group_id, name.c_str());
+            new_group_id = H5Gopen1(m_group_id, name.c_str());
         }
         else
         {
             // HDF5 compatibility
-            new_group_id = H5Gcreate(m_group_id, name.c_str(), 0);
+            new_group_id = H5Gcreate1(m_group_id, name.c_str(), 0);
         }
         h5_check_and_throw<GroupError>(
             new_group_id, "Failed to create/open HDF5 group with '{:s}'.",
@@ -714,7 +715,7 @@ class File : public Group
         m_attributable_id = m_file_id;
 
         // HDF5 compatibility
-        m_group_id = H5Gopen(m_file_id, "/");
+        m_group_id = H5Gopen1(m_file_id, "/");
         h5_check_and_throw<GroupError>(
             m_group_id, "Failed to open base group of file '{:s}'.",
             m_file_name);
@@ -799,7 +800,7 @@ class File : public Group
         m_attributable_id = m_file_id;
 
         // HDF5 compatibility
-        m_group_id = H5Gopen(m_file_id, "/");
+        m_group_id = H5Gopen1(m_file_id, "/");
         h5_check_and_throw<GroupError>(
             m_group_id, "Failed to open base group of file '{:s}'.",
             m_file_name);

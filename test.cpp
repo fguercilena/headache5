@@ -1,8 +1,10 @@
+#include <H5public.h>
 #include <cstring>
 #include <print>
 #include <random>
 #include <vector>
 
+// #define HEADACHE5_DEBUG
 #include "headache5.hpp"
 
 
@@ -97,21 +99,46 @@ int main()
 
         print("Test reading data from a dataset... ");
         fflush(stdout);
-        auto data = dataset_2.read_data<double>();
+        auto read_data = dataset_2.read_data<double>();
         for (hsize_t i = 0; i < dataset.size(); ++i)
         {
-            if (test_data[i] == data[i])
+            if (test_data[i] == read_data[i])
             {
                 continue;
             }
             else
             {
                 println("FAIL! Data written and reread don't coincide!");
+                println("test_data[{:d}](={:f}) != read_data[{:d}](={:f})", i,
+                        test_data[i], i, read_data[i]);
                 fflush(stdout);
                 return 1;
             }
         }
-        print("PASS.");
+        println("PASS.");
+        fflush(stdout);
+
+        print("Test reading part of data from a dataset using a hyperslab... ");
+        fflush(stdout);
+        auto read_data2 =
+            dataset_2.read_data<double>({1, 1}, {1, 1}, {1, 1}, {2, 2});
+        vector<pair<int, int>> ind = {{5, 0}, {6, 1}, {9, 2}, {10, 3}};
+        for (auto [i, n]: ind)
+        {
+            if (test_data[i] == read_data2[n])
+            {
+                continue;
+            }
+            else
+            {
+                println("FAIL! Data written and reread don't coincide!");
+                println("test_data[{:d}](={:f}) != read_data[{:d}](={:f})", i,
+                        test_data[i], n, read_data2[n]);
+                fflush(stdout);
+                return 1;
+            }
+        }
+        println("PASS.");
         fflush(stdout);
 
         print("Test reading an attribute from a group... ");
@@ -121,6 +148,8 @@ int main()
         if (not(strcmp(att.get(), test_attribute) == 0))
         {
             print("FAIL! Attribute written and reread don't coincide");
+            println("test_attribute:{} != read_attribute:{}", test_attribute,
+                    att.get());
             fflush(stdout);
             return 1;
         }
@@ -134,6 +163,8 @@ int main()
         if (not(strcmp(att_2.get(), test_attribute) == 0))
         {
             println("FAIL! Attribute written and reread don't coincide!");
+            println("test_attribute:{} != read_attribute:{}", test_attribute,
+                    att_2.get());
             fflush(stdout);
             return 1;
         }

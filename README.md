@@ -8,11 +8,12 @@ structured, object-oriented way.
 - a simple C++ wrapper for the most commonly used HDF5 entities (File, Group,
   DataSet, DataSpace, Attribute, common DataTypes), with clean API
 - a simple C++ wrapper for the most common operations on those entities
-  (create/open/close Files, Groups, Datasets, read/write data and attrbutes),
-  with clean API
+  (create/open/close Files, Groups, Datasets, read/write data and attrbutes,
+  manage hyperslabs), with clean API
 
 ## HEADACHE5 is **NOT**:
-- a higher level abstraction layer, it uses the same concepts as the HDF5 C API
+- a higher level abstraction layer: it exposes essentially the same concepts as
+  the HDF5 C API (e.g. DataSpaces), it simply provides a cleaner, more succint API
 - a link between fancy containers (STL, Eigen, etc...) and HDF5. You pass
   pointers to data to HEADACHE5 just like you would pass them to the C API.
   There are no plans to include such functionality
@@ -27,9 +28,9 @@ somewhere you like and `#include` it in your C++ project.
 ### Requirements:
 - A compiler supporting C++23
 - The C++ standard library
-- The HDF5 library (to include and link against)
+- The HDF5 C library
 
 ### Testing and examples:
-The *test.cpp* file can be compiled and run by simply typing `make` (requires
-*make* and *gcc*). Besides testing the main features of the library, you can
-take a look at it as an usage example.
+The *test.cpp* file can be compiled and run by running the *test_cmake.sh*
+script, e.g. by `sh test_cmake.sh` (it requires *cmake*). Besides testing the
+main features of the library, it serves as an example of the library usage.

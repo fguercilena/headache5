@@ -20,6 +20,7 @@ namespace H5
 template <class E, class... Args>
 inline void h5_throw(std::format_string<Args...> fmt, Args&&... args)
 {
+    // TODO: is vformat and make format args necessary here? Why not just std::format?
     std::string msg = std::vformat(fmt.get(), std::make_format_args(args...));
 
     throw E(msg);
